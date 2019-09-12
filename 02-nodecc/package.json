@@ -1,0 +1,9 @@
+{
+  "name": "02-nodecc",
+  "version": "1.0.0",
+  "main": "build/Release/hello",
+  "license": "MIT",
+  "scripts": {
+    "build": "node-gyp rebuild"
+  }
+}
