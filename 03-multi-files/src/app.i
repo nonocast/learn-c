@@ -6,6 +6,5 @@
 # 1 "<built-in>" 2
 # 1 "app.c" 2
 int main(void) {
-  int result = add(1, 2);
   return 0;
 }
