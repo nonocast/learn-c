@@ -1,4 +1,5 @@
 #include <node.h>
+extern "C" int add(int, int);
 
 namespace __first__ {
 
@@ -14,8 +15,14 @@ void Method(const FunctionCallbackInfo<Value>& args) {
   args.GetReturnValue().Set(String::NewFromUtf8(isolate, "hello world"));
 }
 
+void calc(const FunctionCallbackInfo<Value>& args) {
+  args.GetReturnValue().Set(add(1, 2));
+}
+
 void init(Local<Object> exports) {
   NODE_SET_METHOD(exports, "hello", Method);
+  NODE_SET_METHOD(exports, "calc", calc);
+
 }
 
 NODE_MODULE(addon, init)
