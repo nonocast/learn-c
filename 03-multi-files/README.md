@@ -472,4 +472,218 @@ hello world
 
 继续
 ----
+app.c
+```
+int add(int, int);
+
+int main(void) {
+  add(1, 2);
+  return 0;
+}
+```
+
+我们接着来看add这个方法,
+- prepressing: `gcc -E app.c -o app.i`
+```
+# 1 "app.c"
+# 1 "<built-in>" 1
+# 1 "<built-in>" 3
+# 362 "<built-in>" 3
+# 1 "<command line>" 1
+# 1 "<built-in>" 2
+# 1 "app.c" 2
+int add(int, int);
+
+int main(void) {
+  add(1, 2);
+  return 0;
+}
+```
+- compilation: `$gcc -S app.i -o app.s`
+```
+	.section	__TEXT,__text,regular,pure_instructions
+	.build_version macos, 10, 15	sdk_version 10, 15
+	.globl	_main                   ## -- Begin function main
+	.p2align	4, 0x90
+_main:                                  ## @main
+	.cfi_startproc
+## %bb.0:
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movl	$0, -4(%rbp)
+	movl	$1, %edi
+	movl	$2, %esi
+	callq	_add
+	xorl	%esi, %esi
+	movl	%eax, -8(%rbp)          ## 4-byte Spill
+	movl	%esi, %eax
+	addq	$16, %rsp
+	popq	%rbp
+	retq
+	.cfi_endproc
+                                        ## -- End function
+
+.subsections_via_symbols
+
+```
+
+对比有add方法定义的app.c生成的asm
+app.c
+```
+int add(int a, int b) {
+  return a + b;
+}
+
+int main(void) {
+  add(1, 2);
+  return 0;
+}
+```
+
+app.s
+```
+	.section	__TEXT,__text,regular,pure_instructions
+	.build_version macos, 10, 15	sdk_version 10, 15
+	.globl	_add                    ## -- Begin function add
+	.p2align	4, 0x90
+_add:                                   ## @add
+	.cfi_startproc
+## %bb.0:
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %esi
+	addl	-8(%rbp), %esi
+	movl	%esi, %eax
+	popq	%rbp
+	retq
+	.cfi_endproc
+                                        ## -- End function
+	.globl	_main                   ## -- Begin function main
+	.p2align	4, 0x90
+_main:                                  ## @main
+	.cfi_startproc
+## %bb.0:
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movl	$0, -4(%rbp)
+	movl	$1, %edi
+	movl	$2, %esi
+	callq	_add
+	xorl	%esi, %esi
+	movl	%eax, -8(%rbp)          ## 4-byte Spill
+	movl	%esi, %eax
+	addq	$16, %rsp
+	popq	%rbp
+	retq
+	.cfi_endproc
+                                        ## -- End function
+
+.subsections_via_symbols
+```
+
+对比发现缺少_add的定义，没法完成callq _add
+
+最终导致link error
+```
+gcc -c app.s -o app.o
+➜  src git:(master) ✗ ld app.o -lSystem
+Undefined symbols for architecture x86_64:
+  "_add", referenced from:
+      _main in app.o
+ld: symbol(s) not found for architecture x86_64
+```
+换句话说，_add是在link阶段完成申明和调用的对接。
+
+
+缺什么补什么，`gcc -S calc.c -o calc.s`
+calc.s
+```
+	.section	__TEXT,__text,regular,pure_instructions
+	.build_version macos, 10, 15	sdk_version 10, 15
+	.globl	_add                    ## -- Begin function add
+	.p2align	4, 0x90
+_add:                                   ## @add
+	.cfi_startproc
+## %bb.0:
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %esi
+	addl	-8(%rbp), %esi
+	movl	%esi, %eax
+	popq	%rbp
+	retq
+	.cfi_endproc
+                                        ## -- End function
+
+.subsections_via_symbols
+```
+然后生成app.o
+`gcc -c calc.s -o calc.o`
+
+最后link的时候合并，
+`ld app.o calc.o -lSystem -o app`
+
+搞定。
+回过头来，没有.h一样可以搞定link
+所以，.h只不过是提取公因式，没有什么奥秘，无形中形成一个申明定义而已。
+
+app.c
+```
+#include <stdio.h>
+#include "calc.h"
+
+int main(void) {
+  printf("1+2: %d\n", add(1, 2));
+  return 0;
+}
+```
+
+calc.h
+```
+#ifndef CALC_H
+#define CALC_H
+
+int add(int a, int b);
+
+#endif
+```
+
+calc.c
+```
+#include "calc.h"
+
+int add(int a, int b) {
+  return a + b;
+}
+```
+
+`gcc app.c calc.c -o app`
+
+分解步骤
+- 针对每个.c编译汇编生成object file(.o)
+- 将object file link生成可执行文件
+
+继续来看多项目的link
+-------------------
+
+
+
 
