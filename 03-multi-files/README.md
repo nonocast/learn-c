@@ -681,9 +681,102 @@ int add(int a, int b) {
 - 针对每个.c编译汇编生成object file(.o)
 - 将object file link生成可执行文件
 
-继续来看多项目的link
+lib是什么？
 -------------------
+lib就是.o的container
+通过ar来完成打包
 
+```
+$ ar -crv libcalc.a calc.o
+$ file libcalc.a
+libcalc.a: current ar archive random library
+```
+linux下lib一般的命名规则:libxxx.a
 
+可以通过ar -t查看，
+```
+$ar -t libcalc.a
+__.SYMDEF SORTED
+calc.o
+```
+通过nm查看object file中的symbol
+```
+$ nm libcalc.a
 
+libcalc.a(calc.o):
+0000000000000000 T _add
+```
 
+client如何调用呢?
+`ld app.o -lSystem -L. -lcalc -o app`app.c
+```
+回忆一下之前的link
+`ld app.o calc.o -lSystem -o app`
+
+-L告诉ld link directory，然后-l表示lib name
+```
+-lx
+This option tells the linker to search for libx.dylib or libx.a in the library search path.  If string x is of the form y.o, then that file is searched for in the same places, but without prepending `lib' or appending `.a' or `.dylib' to the filename.
+
+-Ldir
+Add dir to the list of directories in which to search for libraries.  Directories specified with -L are searched in the order they appear on the command line and before the default search path. In Xcode4 and later, there can be a space between the -L and directory.
+```
+
+这样就通过lib完成了模块分离。
+静态的好处是容易理解，但问题是lib升级就需要重新编译app，不能自行完成升级，不能被多个app共享。
+
+补充一句gcc link方式,
+`gcc app.c -L. -lcalc -o app`
+
+[All about Static Libraries in C - megha mohan - Medium](https://medium.com/@meghamohan/all-about-static-libraries-in-c-cea57990c495)
+
+下面来看动态库，linux下是so, windows下是dll, mac下则是dylib
+`gcc -shared calc.o -o libcalc.so`
+`gcc app.c -L. -lcalc -o app`
+
+当同时存在libcalc.a和libcalc.so时，gcc会优先采用so方式，
+同样的语句link app这时候会动态link到libcalc.so, 验证一下，
+```
+$ file app
+app: Mach-O 64-bit executable x86_64
+$ du -h app
+16K    app
+$ otool -L app
+app:
+        libcalc.so (compatibility version 0.0.0, current version 0.0.0)
+        /usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1279.0.0)
+```
+
+对比一下之前libcalc.a的链接，
+```
+$ otool -L app
+app:
+        /usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1279.0.0)
+```
+
+mac的otool对应linux下的ldd.
+
+此时如果移除so则运行会报错,
+```
+./app
+dyld: Library not loaded: libcalc.so
+  Referenced from: /Users/nonocast/Developer/projects/learn-c/03-multi-files/src/./app
+  Reason: image not found
+[1]    28999 abort      ./app
+```
+将libcalc.so ln到/usr/local/lib
+
+```
+ln -s ~/Developer/projects/learn-c/03-multi-files/src/libcalcx.so /usr/local/lib/libcalc.so
+./app
+1+2=3
+```
+那么搜索so的默认路径是什么呢?
+默认值: $(HOME)/lib:/usr/local/lib:/lib:/usr/lib
+
+确实如此，放到~/lib下，也能work。
+
+[Linux Tutorial - Static, Shared Dynamic and Loadable Linux Libraries](http://www.yolinux.com/TUTORIALS/LibraryArchives-StaticAndDynamic.html)
+[OS X 下动态库的引用 - 刘宝成 - 博客园](https://www.cnblogs.com/liubaocheng999/p/4285256.html)
+
+#EOF
